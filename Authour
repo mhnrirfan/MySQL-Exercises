@@ -1,0 +1,418 @@
+/*========================================================================
+ASSIGNMENT 3: (C0MP518 - Wednesday 4th December 2024)
+STUDENT DETAILS: Mahnoor Iqbal (201565972)
+========================================================================
+#README#
+This TXT File includes:
+ANSWER SHEET
+-> 1. Answers to PART 1 - Schema Creation
+-> 2. Answers to PART 2 - Queries
+
+TESTING DATA
+-> 3. Dummy database i created for test
+-> 4. Expected and Actual result of each query from database*/
+/*========================================================================
+PART 1: 30 Marks
+-> Create the above schemas in MySQL, using the CREATE TABLE statement.
+-> Make sure that you define all possible keys
+-> that entity integrity and referential integrity are guaranteed.
+========================================================================*/
+-- Author Table
+CREATE TABLE Author (
+aID INT NOT NULL AUTO_INCREMENT,
+aName VARCHAR(64) NOT NULL,
+age TINYINT CHECK (age>0), -- added to make sure age bigger than 0
+nationality VARCHAR(64),
+PRIMARY KEY (aID));
+
+-- Publisher Table
+CREATE TABLE Publisher (
+pID INT NOT NULL AUTO_INCREMENT,
+pName VARCHAR(64) NOT NULL,
+address VARCHAR(256),
+PRIMARY KEY (pID));
+
+-- PublishesWith Table
+CREATE TABLE PublishesWith (
+aID INT NOT NULL, -- autoincrement not needed here
+pID INT NOT NUlL,
+since DATE,
+PRIMARY KEY (aID, pID),
+CONSTRAINT fk_aID_PW -- PW assumed as publishes with
+FOREIGN KEY (aID)
+REFERENCES Author(aID)
+ON UPDATE CASCADE
+ON DELETE CASCADE,
+CONSTRAINT fk_pID_PW -- PW assumed as publishes with
+FOREIGN KEY (pID)
+REFERENCES Publisher(pID)
+ON UPDATE CASCADE
+ON DELETE CASCADE);
+
+-- Book Table
+CREATE TABLE Book (
+bID INT NOT NULL AUTO_INCREMENT,
+title VARCHAR(64) NOT NULL,
+genre VARCHAR(25),
+bFormat VARCHAR(25) NOT NULL,
+PRIMARY KEY (bID));
+
+-- AuthoredBy Table
+CREATE TABLE AuthoredBy (
+aID INT NOT NULL, -- autoincrement not needed here
+bID INT NOT NUlL,
+CONSTRAINT fk_aID_AB -- AB assumed as authored by
+FOREIGN KEY (aID)
+REFERENCES Author(aID)
+ON UPDATE CASCADE
+ON DELETE CASCADE,
+CONSTRAINT fk_bID_AB -- AB assumed as authored by
+FOREIGN KEY (bID)
+REFERENCES Book(bID)
+ON UPDATE CASCADE
+ON DELETE CASCADE);
+
+-- Sells Table
+CREATE TABLE Sells (
+pID INT NOT NULL,
+bID INT NOT NULL,
+copiesAvailable INT CHECK (copiesAvailable >=0),
+copiesSold INT CHECK (copiesSold >=0), -- ensure non negative
+CONSTRAINT fk_bID_S -- S assumed as Sells
+FOREIGN KEY (bID)
+REFERENCES Book(bID)
+ON UPDATE CASCADE
+ON DELETE CASCADE,
+CONSTRAINT fk_pID_S -- S assumed as Sells
+FOREIGN KEY (pID)
+REFERENCES Publisher(pID)
+ON UPDATE CASCADE
+ON DELETE CASCADE);
+
+/*========================================================================
+PART 2: 70 Marks
+-> For the above relational database schema provide MySQL queries
+-> 7 questions below each work 10 marks
+========================================================================*/
+
+-- Q2.1 Find the names of publishers that sell “hardback” books.
+SELECT DISTINCT P.pName
+FROM Publisher AS P
+JOIN Sells AS S ON P.pID = S.pID
+JOIN Book AS B ON S.bID = B.bID
+WHERE B.bFormat = 'hardback';
+
+-- Q2.2 Find names of publishers that sell fantasy and sci-fi books.
+SELECT DISTINCT P.pName
+FROM Publisher as P
+JOIN Sells AS S1 ON P.pID = S1.pID
+JOIN Book AS B1 ON S1.bID = B1.bID
+WHERE B1.genre = 'fantasy'
+AND P.pID IN (SELECT S2.pID -- nested query 2 conditions
+FROM Sells AS S2
+JOIN Book AS B2 ON S2.bID = B2.bID
+WHERE B2.genre = 'sci-fi');
+
+-- Q2.3 Find names of publishes where all fantasy books are stocked.
+SELECT DISTINCT P.pName
+FROM Publisher AS P
+WHERE P.pID IN (SELECT S.pID
+FROM Sells AS S
+JOIN Book AS B ON S.bID = B.bID
+WHERE B.genre = 'fantasy'
+GROUP BY S.pID
+HAVING COUNT(CASE WHEN S.copiesAvailable > 0 THEN 1 END) =
+COUNT(B.bID));
+
+-- Q2.4 Publisher IDs who sell literature fiction and no authors above 30
+SELECT DISTINCT P.pID
+FROM Publisher P
+JOIN Sells AS S ON P.pID = S.pID
+JOIN Book AS B on S.bID = B.bID
+WHERE B.genre = 'literary fiction'
+AND NOT EXISTS (SELECT *
+FROM PublishesWith AS PW
+JOIN Author AS A ON PW.aID = A.aID
+WHERE PW.pID = P.pID AND A.age >30);
+
+-- Q2.5 PublisherID and age of oldest author who publish with it
+SELECT P.pID, MAX(A.age) AS MaximumAge -- renamed for table
+FROM Publisher AS P
+JOIN PublishesWith AS PW ON P.pID = PW.pID
+JOIN Author AS A ON PW.aID = A.aID
+GROUP BY P.pID; -- In order
+
+-- Q2.6 Author Names who are older than atleast 1 other authour in Sci-FI Masters
+SELECT DISTINCT A.aName
+FROM Author AS A
+JOIN PublishesWith AS PW ON A.aID = PW.aID
+JOIN Publisher AS P ON PW.pID = P.pID
+WHERE P.pName = 'Sci-Fi Masters'
+AND A.age > (SELECT MIN(A2.age)
+FROM Author AS A2
+JOIN PublishesWith AS PW2 ON A2.aID = PW2.aID
+where PW2.pID = PW.pID);
+
+-- Q2.7 Names of authors who's publishes have sold atleast 5 genres
+SELECT DISTINCT A.aName
+FROM Author AS A
+JOIN PublishesWith AS PW ON A.aID = PW.aID
+JOIN Sells AS S ON PW.pID = S.pID
+JOIN Book AS B ON S.bID = B.bID
+GROUP BY A.aID, A.aName
+HAVING COUNT(DISTINCT B.genre) >=5
+AND SUM(CASE WHEN S.copiesSold >0 THEN 1 ELSE 0 END)>0;
+
+
+/*========================================================================
+ADDITIONAL TESTING: Dummy Dataset
+-> Using thr details and relationship schema i created a dummy dataset
+-> This is to test the queries from part 2 - to see if they run
+-> checking how they handle the dataset and if i needed to make changes
+-> I have commented it out so it doesnt affect the marking process
+========================================================================
+INSERT INTO Author (aID, aName, age, nationality) VALUES
+(1, 'Holly Black', 21, 'British'),
+(2, 'JK Rowling', 34, 'American'),
+(3, 'Colleen Hoover', 41, 'French'),
+(4, 'Victoria Averyard', 56, 'Danish'),
+(5, 'William Shakespeare', 28, 'Finnish'),
+(6, 'Danielle Lori', 23, 'Pakistani'),
+(7, 'Rebecca Yarros', 26, 'Indian'),
+(8, 'Tessa Hastings', 56, 'British'),
+(9, 'Chloe Walsh', 19, 'American'),
+(10, 'Sally Rooney', 31, 'French');
+
+-- Insert data into Publisher Table
+INSERT INTO Publisher (pID, pName, address) VALUES
+(1, 'Penguin Publishing', '12 Grimauld Palace, London, England'),
+(2, 'Peter Pauper Press', 'Mystic Grill, Mystic Falls, Georgia, USA'),
+(3, 'Oxford Press', 'Caltech University, Pasendena, California, USA'),
+(4, 'Sci-Fi Masters', 'The Palace, Upper East Side, New York, USA'),
+(5, 'Berkely', 'NYPD, Brooklyn, New York, USA');
+
+-- Insert data into PublishesWith Table
+INSERT INTO PublishesWith (aID, pID, since) VALUES
+(1, 1, '03-08-21'),
+(2, 2, '17-04-19'),
+(3, 5, '25-12-20'),
+(4, 3, '08-06-18'),
+(5, 2, '13-11-22'),
+(6, 1, '27-03-17'),
+(7, 4, '05-09-16'),
+(8, 4, '21-01-23'),
+(9, 3, '14-07-15'),
+(10, 5, '30-10-14');
+
+-- Insert data into Book Table
+INSERT INTO Book(BiD, title, genre, bFormat) VALUES
+(1, 'The Great Gatsby', 'classic', 'hardback'),
+(2, 'To Kill a Mockingbird', 'literary fiction', 'softcover'),
+(3, '1984', 'sci-fi', 'hardback'),
+(4, 'Pride and Prejudice', 'literary fiction', 'softcover'),
+(5, 'The Catcher in the Rye', 'dystopian', 'paperback'),
+(6, 'Moby-*****', 'science fiction', 'hardback'),
+(7, 'War and Peace', 'romance', 'softcover'),
+(8, 'The Hobbit', 'coming-of-age', 'paperback'),
+(9, 'Brave New World', 'fantasy', 'hardback'),
+(10, 'The Picture of Dorian Gray', 'literary fiction', 'softcover'),
+(11, 'Crime and Punishment', 'psychological fiction', 'softcover'),
+(12, 'Frankenstein', 'sci-fi', 'hardback'),
+(13, 'Jane Eyre', 'gothic', 'hardback'),
+(14, 'The Brothers Karamazov', 'epic', 'softcover'),
+(15, 'Catch-22', 'epic', 'softcover'),
+(16, 'The Grapes of Wrath', 'fantasy', 'paperback'),
+(17, 'The Road', 'sci-fi', 'hardback'),
+(18, 'The Lord of the Rings', 'sci-fi', 'softcover'),
+(19, 'Wuthering Heights', 'literary fiction', 'softcover'),
+(20, 'Little Women', 'fantasy', 'paperback'),
+(21, 'The Alchemist', 'social commentary', 'hardback'),
+(22, 'The Secret Garden', 'literary fiction', 'softcover'),
+(23, 'The Shining', 'literary fiction', 'softcover'),
+(24, 'The Hunger Games', 'sci-fi', 'paperback'),
+(25, 'The Kite Runner', 'fantasy', 'hardback'),
+(26, 'The Handmaid’s Tale', 'sci-fi', 'paperback'),
+(27, 'The Chronicles of Narnia', 'literary fiction', 'softcover'),
+(28, 'The Outsiders', 'fantasy', 'paperback');
+
+-- Insert data into Sells Table
+INSERT INTO Sells (pID, bID, copiesAvailable, copiesSold) VALUES
+(2, 1, 842, 237),
+(2, 2, 615, 981),
+(4, 3, 230, 563),
+(4, 4, 501, 142),
+(5, 5, 764, 809),
+(1, 6, 98, 305),
+(3, 7, 367, 426),
+(3, 8, 812, 515),
+(1, 9, 0, 772),
+(2, 10, 673, 389),
+(5, 11, 925, 613),
+(4, 12, 0, 548),
+(1, 13, 198, 193),
+(4, 14, 270, 762),
+(2, 15, 552, 927),
+(1, 16, 380, 80),
+(3, 17, 669, 647),
+(3, 18, 749, 292),
+(4, 19, 82, 110),
+(2, 20, 211, 514),
+(2, 21, 928, 690),
+(1, 22, 173, 37),
+(1, 23, 900, 466),
+(4, 24, 54, 855),
+(4, 25, 626, 141),
+(2, 26, 45, 551),
+(1, 27, 337, 938),
+(3, 28, 796, 102);
+
+-- Insert data into AuthoredBy Table
+INSERT INTO AuthoredBy (aID, bID) VALUES
+(5, 1),
+(8, 2),
+(2, 3),
+(3, 4),
+(7, 5),
+(1, 6),
+(9, 7),
+(4, 8),
+(6, 9),
+(10, 10),
+(3, 11),
+(8, 12),
+(1, 13),
+(5, 14),
+(2, 15),
+(6, 16),
+(9, 17),
+(4, 18),
+(7, 19),
+(10, 20),
+(2, 21),
+(6, 22),
+(8, 23),
+(3, 24),
+(7, 25),
+(5, 26),
+(1, 27),
+(4, 28); */
+
+/*========================================================================
+ADDITIONAL TESTING: Expected and Actual Results
+-> Here using data and EXCEL i wrote the expected results for each query
+->I have written down how i found each answer showing justifications
+->I also show the actual outputs for each query from SQL
+========================================================================
+-- Question 2a:------------------------------------------------------------
+Find the names of publishers that sell “hardback” books.
+EXPECTED: Penguin Publishing, Peter Pauper Press, Oxford Press, Sci-Fi Masters,
+Step by step:
+-> Book Table Hardbacks = bID (2,4,6,9,12,15)
+-> Sells Table pID (1,2,3,4) DISTINCT
+-> pName = Penguin Publishing, Peter Pauper Press, Oxford Press, Sci-Fi Masters
+Actual Output: CORRECT!
++--------------------+
+| pName |
++--------------------+
+| Penguin Publishing |
+| Peter Pauper Press |
+| Oxford Press |
+| Sci-Fi Masters |
++--------------------+
+
+-- Question 2b:------------------------------------------------------------
+Find the names of publishers that sell fantasy and sci-fi
+EXPECTED: Peter Pauper Press, Oxford Press, Sci-Fi Masters
+Step by step:
+-> Book Table Fantasy = bID (9,16,20,25,28)
+-> Book Table Sci-fi = bID (3,12,17,18,24,26)
+-> Sells Table pID Fantasy(1,2,3,4) DISTINCT
+-> Sells Table pID Sci-fi(2,3,4,5) DISTINCT
+-> Both = 2,3,4 = Peter Pauper Press, Oxford Press, Sci-Fi Masters
+Actual Output: CORRECT!
++--------------------+
+| pName |
++--------------------+
+| Peter Pauper Press |
+| Oxford Press |
+| Sci-Fi Masters |
++--------------------+
+
+-- Question 2c:------------------------------------------------------------
+Find Find names of publishes where all fantasy books are stocked.
+EXPECTED: Peter Pauper Press, Oxford Press, Sci-Fi Masters
+Step by step:
+-> Books Table fantasy = bID (9,16,20,25,28)
+-> Sells Table pID = (1,2,3,4) DISTINCT
+-> Check which has books 0 sold in sells and remove (1)
+-> Both = 2,3,4 = Peter Pauper Press, Oxford Press, Sci-Fi Masters
+Actual Output: CORRECT!
++--------------------+
+| pName |
++--------------------+
+| Peter Pauper Press |
+| Oxford Press |
+| Sci-Fi Masters |
++--------------------+
+
+-- Question 2d:------------------------------------------------------------
+Find Publisher IDs who sell literature fiction and no authors above 30
+EXPECTED: 1
+Step by step:
+-> Books Table literature fiction bID = (2,4,10,19,22,27)
+-> Authored Table aID = (8,3,10,7,6,1)
+-> Author Table aID of not above 30 = 1,7,6
+-> PublishesWith = 1,4 but 4 doesnt count has it has 1 author above 30
+Actual Output: CORRECT!
++-----+
+| pID |
++-----+
+| 1 |
++-----+
+
+-- Question 2e:------------------------------------------------------------
+Find PublisherID and age of oldest author who publish with it
+EXPECTED: 23, 34, 56, 56, 56, 41
+Step by step:
+-> Publisher ID group authors for each ID. (1-5)
+-> PublishedWith to get aID
+-> Compare in author table
+Actual Output: CORRECT!
++-----+------------+
+| pID | MaximumAge |
++-----+------------+
+| 1 | 23 |
+| 2 | 34 |
+| 3 | 56 |
+| 4 | 56 |
+| 5 | 41 |
++-----+------------+
+-- Question 2f:------------------------------------------------------------
+Find Author Names who are older than atleast 1 other author in Sci-FI Masters
+EXPECTED: Tessa Hasting
+Step by step:
+-> PublishedWith to get AuthorID for Sci-Fi Masters pID
+-> aID is 7 and 8
+-> 8 is 56 which is older than 7 who is 26
+Actual Output: CORRECT!
++----------------+
+| aName |
++----------------+
+| Tessa Hastings |
++----------------+
+-- Question 2g:------------------------------------------------------------
+Find Names of authors who's publishes have sold atleast 5 genres
+EXPECTED: JK Rowling, William Shakespeare
+Step by step:
+-> Publisher table connect with Sells to get bID
+-> Connect bID with Books to get Format
+-> Count how many genres each format
+-> If greater than 5 check if copiesSold >0
+-> Connect pID with aID and to get aName from Author Table
+Actual Output: CORRECT!
++---------------------+
+| aName |
++---------------------+
+| JK Rowling |
+| William Shakespeare |
++---------------------+*/
